@@ -5,6 +5,7 @@
 #include<pthread.h>
 #include<string>
 #include<fstream>
+#include<iostream>
 
 using namespace std;
 
@@ -18,8 +19,9 @@ void* conn_proc(void* args) {
 	int i, j, index=0;
 	
 
-	char recvBuf[100];
-	recv(sockConn, recvBuf, 100, 0);//服务器从客户端接受数据
+	char recvBuf[1000];
+	memset(recvBuf, 0, 1000);
+	recv(sockConn, recvBuf, 1000, 0);//服务器从客户端接受数据
 	printf("获得数据\n");
 	printf("%s\n", recvBuf);
 	//closesocket(sockConn);//关闭socket
@@ -32,25 +34,140 @@ void* conn_proc(void* args) {
 	char *filetype = (char*)malloc(5);//实际文件类型
 	char *HTMLcontent = (char*)malloc(400);
 	char *TXTcontent = (char*)malloc(400);
-	char *ICOcontent = (char*)malloc(6000);
-	char *JPGcontent = (char*)malloc(16000);
+	//char *ICOcontent = (char*)malloc(6000);
+	char ICOcontent[6000];
+	char JPGcontent[16000];
 	char *temp = (char*)malloc(100);
-	char *responseBuffer = (char*)malloc(500);
+	char *responseBuffer = (char*)malloc(20000);
 	int length_int;
 	char length[8];//buffer长度
-	fstream icofile;
+	//fstream icofile;
 	fstream htmlfile;
-	fstream jpgfile;
+	fstream txtfile;
+	//fstream jpgfile;
+	FILE* jpg_file=NULL;
+	FILE* ico_file = NULL;
 
 	for (i = 0;i<sizeof(recvBuf); i++) {
 		if (recvBuf[i] != ' ') method[i] = recvBuf[i];
 		else break;
 	}
 	method[i] = '\0';
+	//cout << "method=" << method << endl;
 
 	if (strcmp(method, "POST") == 0) {
 		//POST请求
 		printf("post请求\n");
+		//文件路径
+		if (recvBuf[i] != ' ') cout << "error"<<endl;
+		for (i = i + 1, j = 0;; i++, j++) {
+			if (recvBuf[i] != ' ') addr[j] = recvBuf[i];
+			else {
+				addr[j] = '\0';
+				break;
+			}
+		}
+		//cout << "addr=" << addr << endl;
+		for (j = 0; j<50; j++) if (addr[j] == '/') index = j;
+		*abs_addr = '\0';
+		strcat(abs_addr, &addr[index + 1]);
+
+		if (strcmp(abs_addr, "dopost") != 0) {
+			//dopost检测错误，返回404
+			strcpy(responseBuffer, "HTTP/1.1 ");
+			strcat(responseBuffer, "404 ");
+			strcat(responseBuffer, "NOT FOUND\r\n");
+			strcat(responseBuffer, "\0");
+			send(sockConn, responseBuffer, 501, 0);
+			closesocket(sockConn);//关闭socket
+			return NULL;
+		}
+		else {
+			//找到login
+			for (i = 0; i < 995; i++) {
+				//cout << "once" << endl;
+				if (recvBuf[i] == 'l' &&
+					recvBuf[i + 1] == 'o' &&
+					recvBuf[i + 2] == 'g' &&
+					recvBuf[i + 3] == 'i' &&
+					recvBuf[i + 4] == 'n')
+					break;
+			}
+			char* username = (char*)malloc(20);
+			char* password = (char*)malloc(20);
+			//提取login
+			int n = 0;
+			for (i = i + 6;; i++) {
+				if (recvBuf[i] != '&') {
+					*(username + n++) = recvBuf[i];
+				}
+				else break;
+			}
+			*(username + n) = '\0';
+			//cout << "username:" << username << endl;
+			//提取pass
+			n = 0;
+			for (i = i + 1;; i++) {
+				if (recvBuf[i] == 'p' &&
+					recvBuf[i + 1] == 'a' &&
+					recvBuf[i + 2] == 's' &&
+					recvBuf[i + 3] == 's' &&
+					recvBuf[i + 4] == '=')
+					break;
+			}
+			for (i = i + 5;; i++) {
+				if (recvBuf[i] != 0) {
+					*(password + n++) = recvBuf[i];
+				}
+				else break;
+			}
+			*(password + n) = '\0';
+
+			//cout << "password:" << password << endl;
+
+			//判断login和pass是否正确
+			char* judge = (char*)malloc(50);
+			
+			if (strcmp(username, "3150104790") == 0 && strcmp(password, "4790") == 0) {
+				strcpy(judge, "login success!");
+			}
+			else strcpy(judge, "login failed!");
+			length_int = 0;
+			for (i = 0;; i++) {
+				if (*(judge + i) != '\0') length_int++;
+				else break;
+			}
+			//cout << judge << endl;
+			
+
+			char* message = (char*)malloc(100);
+			strcpy(message, "<html><head><title>login</title></head><body><h1>");
+			strcat(message, judge);
+			strcat(message, "</h1></body></html>");
+			
+			length_int = strlen(message);
+			itoa(length_int, length, 10);
+
+			strcpy(responseBuffer, "HTTP/1.1 ");
+			strcat(responseBuffer, "200 ");
+			strcat(responseBuffer, "OK\r\n");
+			strcat(responseBuffer, "Content-Length:");
+			strcat(responseBuffer, length);
+			strcat(responseBuffer, "\r\n");
+			strcat(responseBuffer, "Connection:keep-alive\r\n");
+			strcat(responseBuffer, "Content-Type:text/html");
+			strcat(responseBuffer, "\r\n\r\n");
+			strcat(responseBuffer, message);
+
+			
+			int result = send(sockConn, responseBuffer, strlen(responseBuffer), 0);
+			//cout << "result=" << result << endl;
+			if (result == SOCKET_ERROR) {
+				printf("SOCKET ERROR!\n");
+			}
+			//printf("%s\n", responseBuffer);
+
+		}
 	}
 
 	else if (strcmp(method, "GET") == 0) {
@@ -66,26 +183,29 @@ void* conn_proc(void* args) {
 				break;
 			}
 		}
-		//printf("addr%s\n", addr);
+		printf("addr%s\n", addr);
 
 		//映射为服务器中文件的绝对路径
 		for (j = 0; j<50; j++) if (addr[j] == '/') index=j;
+		index++;
 		abs_addr[0] = 'E';
 		abs_addr[1] = ':';
-		for (j = 2;; j++,index++) {
+		abs_addr[2] = '/';
+		abs_addr[3] = '/';
+		for (j = 4;; j++,index++) {
 			if (addr[index] == '\0') {
 				abs_addr[j] = '\0';
 				break;
 			}
 			abs_addr[j] = addr[index];
 		}
-		printf("absaddr%s\n", abs_addr);
+		//printf("absaddr%s\n", abs_addr);
 
 		//分析content-type
 		for (j = 0; j < 50; j++) {
 			if (abs_addr[j] == '.') {
 				if (abs_addr[j + 1] == 't') {
-					type = "text/html";
+					type = "text/plain";
 					filetype = "txt";
 				}
 				else if (abs_addr[j + 1] == 'h') {
@@ -103,13 +223,25 @@ void* conn_proc(void* args) {
 				break;
 			}
 		}
-		//printf("type=%s\n", type);
+		//cout << "type=" << type << endl;
 
 
 		//打开文件
-		if (strcmp(type, "image/x-ico") == 0) icofile.open(abs_addr, ios::binary | ios::in);
-		else if (strcmp(type, "application/x-jpg") == 0) jpgfile.open(abs_addr, ios::binary | ios::in);
-		else htmlfile.open(abs_addr, ios::in| ios::binary);//一定要用二进制打开
+		if (strcmp(type, "image/x-ico") == 0) {
+			ico_file = fopen(abs_addr, "rb");
+		}
+		else if (strcmp(type, "application/x-jpg") == 0) {
+			jpg_file = fopen(abs_addr, "rb");
+		}
+		else if (strcmp(type, "text/html") == 0) {
+			
+			htmlfile.open(abs_addr, ios::in | ios::binary);//一定要用二进制打开
+		}
+		else if (strcmp(type, "text/plain") == 0) {
+			txtfile.open(abs_addr, ios::in | ios::binary);
+		}
+
+		//文件打不开，返回404
 		if (strcmp(type, "text/html") == 0 && !htmlfile.is_open() ) {
 			//找不到html文件，返回404
 			printf("cannot find file.\n");
@@ -121,7 +253,18 @@ void* conn_proc(void* args) {
 			closesocket(sockConn);//关闭socket
 			return NULL;
 		}
-		else if (strcmp(type, "image/x-ico") == 0 && !icofile.is_open()) {
+		else if (strcmp(type, "text/plain") == 0 && !txtfile.is_open()) {
+			//找不到txt文件，返回404
+			printf("cannot find file.\n");
+			strcpy(responseBuffer, "HTTP/1.1 ");
+			strcat(responseBuffer, "404 ");
+			strcat(responseBuffer, "NOT FOUND\r\n");
+			strcat(responseBuffer, "\0");
+			send(sockConn, responseBuffer, 501, 0);
+			closesocket(sockConn);//关闭socket
+			return NULL;
+		}
+		else if (strcmp(type, "image/x-ico") == 0 && ico_file==NULL) {
 			//找不到ico文件，返回404
 			printf("cannot find file.\n");
 			strcpy(responseBuffer, "HTTP/1.1 ");
@@ -132,7 +275,7 @@ void* conn_proc(void* args) {
 			closesocket(sockConn);//关闭socket
 			return NULL;
 		}
-		else if (strcmp(type, "application/x-jpg") == 0 && !jpgfile.is_open()) {
+		else if (strcmp(type, "application/x-jpg") == 0 && jpg_file==NULL) {
 			//找不到jpg文件，返回404
 			printf("cannot find file.\n");
 			strcpy(responseBuffer, "HTTP/1.1 ");
@@ -154,54 +297,72 @@ void* conn_proc(void* args) {
 			
 			//printf("length_int=%d\n", length_int);
 			htmlfile.read(HTMLcontent, length_int);
-			strcat(HTMLcontent, "\0");
-			//printf("start:%s\n", HTMLcontent);
+			
+			*(HTMLcontent + length_int) = '\0';
 			
 			itoa(length_int, length, 10);
 			htmlfile.close();
 		}
-		else if (strcmp(type, "text/html") == 0 && strcmp(filetype, "txt") == 0) {
+		else if (strcmp(type, "text/plain") == 0 && strcmp(filetype, "txt") == 0) {
 			//txt文件
+			strcpy(TXTcontent, "\0");
+			txtfile.seekg(0, ios::end);
+			length_int = txtfile.tellg();
+			txtfile.seekg(0, ios::beg);
 
+			//printf("length_int=%d\n", length_int);
+			txtfile.read(TXTcontent, length_int);
+
+			*(TXTcontent + length_int) = '\0';
+
+			itoa(length_int, length, 10);
+			txtfile.close();
 		}
 		else if (strcmp(type, "image/x-ico") == 0 && strcmp(filetype, "ico") == 0) {
 			//ico文件
-			strcpy(ICOcontent, "\0");
-			icofile.seekg(0, ios::end);
-			length_int = icofile.tellg();
-			icofile.seekg(0, ios::beg);
-			//printf("length_int=%d\n", length_int);
-			icofile.read(ICOcontent, length_int);
-			strcat(ICOcontent, "\0");
-			//printf("start:%s\n", ICOcontent);
+			
+			fseek(ico_file, 0, SEEK_END);
+			length_int = ftell(ico_file);
+			fseek(ico_file, 0, SEEK_SET);
+			
+			cout << length_int << endl;
+			
+			i = 0;
+			
+			while (!feof(ico_file)) {
+				char ch = fgetc(ico_file);
+				//cout << "i=" << i << endl;
+				
+				*(ICOcontent + i++) = ch;
+			}
+			*(ICOcontent + i) = '\0';
+
 			itoa(length_int, length, 10);
-			icofile.close();
+			fclose(ico_file);
 		}
 		else if (strcmp(type, "application/x-jpg") == 0 && strcmp(filetype, "jpg") == 0) {
 			//jpg文件
-			strcpy(JPGcontent, "\0");
-			jpgfile.seekg(0, ios::end);
-			length_int = jpgfile.tellg();
-			jpgfile.seekg(0, ios::beg);
-			printf("length_int=%d\n", length_int);
-			//jpgfile.read(JPGcontent, length_int);
+			
+			fseek(jpg_file, 0, SEEK_END);
+			length_int = ftell(jpg_file);
+			fseek(jpg_file, 0, SEEK_SET);
 
-			char* c = (char*)malloc(1);
-			while (1) {
-				if (jpgfile.eof()) break;
-				jpgfile.read(c, 1);
-				strcat(JPGcontent, c);
-				jpgfile.seekg(1, ios::cur);
+
+			cout << length_int << endl;
+			i = 0;
+
+			while (!feof(jpg_file)) {
+				char ch = fgetc(jpg_file);
+				//cout << "i=" << i << endl;
+
+				*(JPGcontent + i++) = ch;
 			}
 
-			strcat(JPGcontent, "\0");
-			printf("start:%p\n", JPGcontent);
+
 			itoa(length_int, length, 10);
-			jpgfile.close();
+			fclose(jpg_file);
 		}
 		
-
-		//printf("%s\n", HTMLcontent);
 
 		//填HTTP响应报文
 		strcpy(responseBuffer, "HTTP/1.1 ");
@@ -210,23 +371,47 @@ void* conn_proc(void* args) {
 		strcat(responseBuffer, "Content-Length:");
 		strcat(responseBuffer, length);
 		strcat(responseBuffer, "\r\n");
-		strcat(responseBuffer, "Connection:close\r\n");
+		strcat(responseBuffer, "Connection:keep-alive\r\n");
 		strcat(responseBuffer, "Content-Type:");
 		strcat(responseBuffer, type);
 		strcat(responseBuffer, "\r\n\r\n");
-		if(strcmp(type,"text/html")==0) strcat(responseBuffer, HTMLcontent);
-		else if (strcmp(type, "image/x-ico") == 0) strcat(responseBuffer, ICOcontent);
-		else if (strcmp(type, "application/x-jpg") == 0) strcat(responseBuffer, JPGcontent);
-		strcat(responseBuffer, "\0");
 
-		int reslength = 0;
-		while (*(responseBuffer + reslength) != '\0') {
-			reslength++;
+		//index指向header末尾
+		index = 0;
+		for (i = 0;; i++) {
+			if (*(responseBuffer + i) != '\0') index++;
+			else break;
 		}
-		reslength++;
+		
+		int headlength = strlen(responseBuffer);
+		//printf("%s\n", responseBuffer);
+		//cout << "headlength=" << headlength << endl;
 
-		send(sockConn, responseBuffer, reslength, 0);
-		printf("%s\n", responseBuffer);
+		if (strcmp(type, "text/html") == 0) {
+			strcat(responseBuffer, HTMLcontent);//html是文本buffer，可以直接用字符串操作
+		}
+		else if (strcmp(type, "text/plain") == 0) {
+			strcat(responseBuffer, TXTcontent);//txt是文本buffer，可以直接用字符串操作
+		}
+		else if (strcmp(type, "image/x-ico") == 0) {//图片不能用字符串函数，因为图片数据可能出现\0
+			for (i = 0; i < length_int; i++) {
+				*(responseBuffer + index++) = *(ICOcontent + i);
+			}
+		}
+		else if (strcmp(type, "application/x-jpg") == 0) {//图片不能用字符串函数，因为图片数据可能出现\0
+			for (i = 0; i < length_int; i++) {
+				*(responseBuffer + index++) = *(JPGcontent + i);
+			}
+			//cout << "i=" << i << endl;
+		}
+
+		//cout << "test:" << headlength + length_int << endl;
+		int result=send(sockConn, responseBuffer, headlength+length_int, 0);
+		//cout << "num=" << result << endl;
+		if (result == SOCKET_ERROR) {
+			printf("SOCKET ERROR!\n");
+		}
+		//printf("%s\n", responseBuffer);
 
 	}
 
@@ -257,7 +442,7 @@ int main() {
 		WSACleanup();
 		return NULL;
 	}
-	//真正socket编程部分
+	
 	SOCKET sockSrv = socket(AF_INET, SOCK_STREAM, 0);//面向连接的可靠性服务SOCK_STRAM
 	SOCKADDR_IN addrSrv;//存放本地地址信息的
 	addrSrv.sin_addr.S_un.S_addr = htonl(INADDR_ANY);//htol将主机字节序long型转换为网络字节序
@@ -272,17 +457,7 @@ int main() {
 	{
 		printf("开始监听4790端口\n");
 		SOCKET sockConn = accept(sockSrv, (SOCKADDR*)&addrClient, &len);//建立一个新的套接字用于通信，不是前面的监听套接字
-		/*
-		char sendBuf[100];
-		printf(sendBuf, "Server IP is:%s",
-			inet_ntoa(addrClient.sin_addr));//inet_nota函数是将字符转换成ip地址
-		send(sockConn, sendBuf, strlen(sendBuf) + 1, 0);//服务器向客户端发送数据
-
-		char recvBuf[100];
-		recv(sockConn, recvBuf, 100, 0);//服务器从客户端接受数据
-		printf("%s\n", recvBuf);
-		closesocket(sockConn);//关闭socket
-		*/
+		
 		int err = pthread_create(&thread[n++], NULL, conn_proc, (void*)(&sockConn));
 		if (err) {
 			printf("conn_proc error!\n");
